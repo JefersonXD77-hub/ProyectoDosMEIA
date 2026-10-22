@@ -6,6 +6,7 @@ const cors = require('cors');
 const authRoutes = require('./routes/auth.routes');
 const usuariosRoutes = require('./routes/usuarios.routes');
 const carpetasRoutes = require('./routes/carpetas.routes');
+const archivosRoutes = require('./routes/archivos.routes');
 
 const {
     conectarMongoDB,
@@ -28,6 +29,7 @@ app.use(express.json());
 app.use('/api/auth', authRoutes);
 app.use('/api/usuarios', usuariosRoutes);
 app.use('/api/carpetas', carpetasRoutes);
+app.use('/api/archivos', archivosRoutes);
 
 app.get('/api/health', async (req, res) => {
     try {

@@ -1,0 +1,5 @@
+Prueba de almacenamiento GridFS
+Proyecto Dos MEIA
+Universidad de San Carlos de Guatemala
+
+Este archivo se almacenará en MongoDB.

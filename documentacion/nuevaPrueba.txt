@@ -1,0 +1,5 @@
+Esta es una neva prueba de almacenamiento GridFS
+Proyecto Dos MEIA
+Universidad de San Carlos de Guatemala
+
+Este SEGUNDO archivo se almacenará en MongoDB.
