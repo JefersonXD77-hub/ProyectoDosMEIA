@@ -3,6 +3,7 @@ const express = require('express');
 const { ObjectId, GridFSBucket } = require('mongodb');
 
 const { obtenerBD } = require('../config/mongodb');
+const { registrarActividadSegura } = require('../services/actividad.service');
 const {
     autenticar
 } = require('../middlewares/auth.middleware');
@@ -76,6 +77,8 @@ router.delete('/:id', async (req, res) => {
 
         const db = obtenerBD();
 
+        const archivoOriginal = await db.collection('documentos.files')
+            .findOne(filtroArchivo(req, false), { projection: { filename: 1 } });
         const resultado = await db
             .collection('documentos.files')
             .updateOne(
@@ -94,6 +97,14 @@ router.delete('/:id', async (req, res) => {
                 mensaje: 'Archivo no encontrado'
             });
         }
+
+        await registrarActividadSegura({
+            usuarioId: req.usuario.id,
+            accion: 'ARCHIVO_PAPELERA',
+            tipoRecurso: 'archivo',
+            recursoId: req.params.id,
+            recursoNombre: archivoOriginal?.filename ?? null
+        });
 
         return res.json({
             mensaje: 'Archivo enviado a la papelera'
@@ -174,6 +185,15 @@ router.patch('/:id/restaurar', async (req, res) => {
             });
         }
 
+        await registrarActividadSegura({
+            usuarioId: req.usuario.id,
+            accion: 'ARCHIVO_RESTAURADO',
+            tipoRecurso: 'archivo',
+            recursoId: archivo._id,
+            recursoNombre: archivo.filename,
+            detalles: { carpetaDestino: String(carpetaDestino ?? '') }
+        });
+
         return res.json({
             mensaje: 'Archivo restaurado correctamente',
             archivo: {
@@ -217,6 +237,14 @@ router.delete('/:id/permanente', async (req, res) => {
         const bucket = obtenerBucket(db);
 
         await bucket.delete(archivo._id);
+
+        await registrarActividadSegura({
+            usuarioId: req.usuario.id,
+            accion: 'ARCHIVO_ELIMINADO_PERMANENTE',
+            tipoRecurso: 'archivo',
+            recursoId: archivo._id,
+            recursoNombre: archivo.filename
+        });
 
         return res.json({
             mensaje: 'Archivo eliminado definitivamente'

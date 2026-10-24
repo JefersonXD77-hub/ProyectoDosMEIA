@@ -1,0 +1,157 @@
+<header>
+      <strong>Gestión Documental · Compartidos</strong>
+      <button type="button" (click)="volver()">Volver a Mis archivos</button>
+    </header>
+    <main>
+      <h1>Compartir archivos y carpetas</h1>
+      <p>Lectura permite consultar y descargar; Comentar añade comentarios; Edición también permite renombrar.</p>
+
+      @if (seleccionId) {
+        <section class="panel">
+          <h2>Compartir: {{ seleccionNombre }}</h2>
+          <form (ngSubmit)="conceder()">
+            <div class="campo-destinatario">
+              <label for="busquedaDestinatario">Persona con quien compartir</label>
+              <input
+                id="busquedaDestinatario"
+                type="search"
+                name="busquedaDestinatario"
+                [(ngModel)]="busquedaDestinatario"
+                (ngModelChange)="alCambiarBusqueda($event)"
+                (focus)="mostrarSugerencias = true"
+                placeholder="Buscar por nombre o usuario..."
+                autocomplete="off"
+                maxlength="60"
+              />
+              @if (usuarioSeleccionado) {
+                <div class="usuario-elegido">
+                  ✓ {{ usuarioSeleccionado.nombre }} (&#64;{{ usuarioSeleccionado.username }})
+                  <button type="button" (click)="limpiarDestinatario()">Cambiar</button>
+                </div>
+              } @else if (mostrarSugerencias) {
+                <div class="sugerencias">
+                  @if (busquedaDestinatario.trim().length < 2) {
+                    <p>Escribe al menos 2 caracteres para buscar.</p>
+                  } @else if (buscandoUsuarios) {
+                    <p>Buscando usuarios...</p>
+                  } @else {
+                    @for (u of sugerencias; track u.username) {
+                      <button type="button" class="sugerencia" (click)="seleccionarDestinatario(u)">
+                        <strong>{{ u.nombre }}</strong>
+                        <span>&#64;{{ u.username }}</span>
+                      </button>
+                    } @empty {
+                      <p>No se encontraron usuarios activos.</p>
+                    }
+                  }
+                </div>
+              }
+            </div>
+            <label>Permiso
+              <select name="nivel" [(ngModel)]="nivel">
+                <option value="LECTURA">Lectura</option>
+                <option value="COMENTAR">Comentar</option>
+                <option value="EDICION">Edición</option>
+              </select>
+            </label>
+            <button type="submit" [disabled]="procesando || !usuarioSeleccionado">Guardar permiso</button>
+            <button type="button" (click)="cerrarSeleccion()">Cerrar</button>
+          </form>
+        </section>
+      }
+
+      @if (error) { <p class="error">{{ error }}</p> }
+      @if (aviso) { <p class="aviso">{{ aviso }}</p> }
+
+      <h2>Compartidos por mí ({{ otorgados.length }})</h2>
+      @if (cargando) { <p>Cargando recursos...</p> }
+      @for (p of otorgados; track p.id) {
+        <div class="fila">
+          <span>📎 {{ p.recursoNombre }} ({{ p.tipo }}) → <strong>{{ p.destinatario }}</strong> · {{ p.nivel }}</span>
+          <div class="acciones">
+            <button type="button" (click)="prepararCompartir(p)">Compartir con otro usuario</button>
+            <button type="button" (click)="verComentarios(p.tipo, p.recursoId, 'PROPIETARIO')">Comentarios</button>
+            <button type="button" (click)="abrirEditorPermiso(p)" [disabled]="procesando">
+              Cambiar permiso
+            </button>
+            <button type="button" (click)="revocar(p)" [disabled]="procesando">Revocar</button>
+          </div>
+        </div>
+        @if (edicionPermisoId === p.id) {
+          <div class="editor-permiso">
+            <label>Permiso de {{ p.destinatario }}
+              <select name="editarNivel" [(ngModel)]="nivelEditando">
+                <option value="LECTURA">Lectura</option>
+                <option value="COMENTAR">Comentar</option>
+                <option value="EDICION">Edición</option>
+              </select>
+            </label>
+            <button type="button" (click)="guardarCambioNivel(p)"
+              [disabled]="procesando || nivelEditando === p.nivel">Guardar cambio</button>
+            <button type="button" (click)="cancelarCambioNivel()">Cancelar</button>
+          </div>
+        }
+      } @empty { <p>No has compartido recursos todavía.</p> }
+
+      <h2>Compartidos conmigo ({{ recibidos.length }})</h2>
+      @for (p of recibidos; track p.id) {
+        <div class="fila">
+          <span>{{ p.tipo === 'carpeta' ? '📁' : '📄' }} <strong>{{ p.recursoNombre }}</strong> · de {{ p.propietario }} · {{ p.nivel }}</span>
+          <div class="acciones">
+            @if (p.tipo === 'carpeta') {
+              <button (click)="abrirCarpeta(p.recursoId)">Abrir carpeta</button>
+            } @else {
+              <button (click)="descargar(p.recursoId, p.recursoNombre)">Descargar</button>
+            }
+            @if (p.nivel === 'EDICION') {
+              <button (click)="renombrar(p.tipo,p.recursoId,p.recursoNombre)">Renombrar</button>
+            }
+            <button (click)="verComentarios(p.tipo,p.recursoId,p.nivel)">Comentarios</button>
+          </div>
+        </div>
+      } @empty { <p>Todavía no te han compartido documentos.</p> }
+
+      @if (contenido) {
+        <section class="panel">
+          <h2>Carpeta compartida: {{ contenido.carpeta.nombre }}</h2>
+          <button (click)="cerrarCarpeta()">Cerrar carpeta compartida</button>
+          @if (rutaCompartida.length > 1) { <button (click)="subirNivel()">Subir un nivel</button> }
+          @for (c of contenido.carpetas; track c._id) {
+            <div class="fila"><span>📁 {{ c.nombre }}</span>
+              <button (click)="abrirCarpeta(c._id)">Abrir</button>
+            </div>
+          }
+          @for (a of contenido.archivos; track a._id) {
+            <div class="fila"><span>📄 {{ a.filename }} ({{ a.length }} bytes)</span>
+              <div class="acciones">
+                <button (click)="descargar(a._id,a.filename)">Descargar</button>
+                @if (contenido.nivel === 'EDICION' || contenido.nivel === 'PROPIETARIO') {
+                  <button (click)="renombrar('archivo',a._id,a.filename)">Renombrar</button>
+                }
+                <button (click)="verComentarios('archivo',a._id,contenido.nivel)">Comentarios</button>
+              </div>
+            </div>
+          }
+        </section>
+      }
+
+      @if (recursoComentarios) {
+        <section class="panel">
+          <h2>Comentarios del recurso</h2>
+          <button (click)="recursoComentarios=null">Cerrar comentarios</button>
+          @for (c of comentarios; track $index) {
+            <p class="comentario">
+              <strong>{{ c.autor || 'Usuario' }}:</strong> {{ c.texto }}
+              <small>({{ mostrarFecha(c.fechaCreacion) }})</small>
+            </p>
+          } @empty { <p>Sin comentarios.</p> }
+          @if (permisoComentario !== 'LECTURA') {
+            <form (ngSubmit)="publicarComentario()">
+              <input name="comentario" [(ngModel)]="textoComentario" maxlength="1000" placeholder="Escribe un comentario" required />
+              <button type="submit" [disabled]="procesando">Publicar</button>
+            </form>
+          } @else { <p>Tu permiso es de solo lectura.</p> }
+        </section>
+      }
+    </main>
+  

@@ -3,6 +3,7 @@
 const express = require('express');
 const { ObjectId, GridFSBucket } = require('mongodb');
 const { obtenerBD } = require('../config/mongodb');
+const { registrarActividadSegura } = require('../services/actividad.service');
 const { autenticar } = require('../middlewares/auth.middleware');
 
 const router = express.Router();
@@ -95,6 +96,17 @@ router.delete('/:id', async (req, res) => {
             }
         });
 
+        await registrarActividadSegura({
+            usuarioId: req.usuario.id,
+            accion: 'CARPETA_PAPELERA',
+            tipoRecurso: 'carpeta',
+            recursoId: raiz._id,
+            recursoNombre: raiz.nombre,
+            detalles: {
+                carpetasAfectadas: resultadoCarpetas.modifiedCount,
+                archivosAfectados: resultadoArchivos.modifiedCount
+            }
+        });
         return res.json({
             mensaje: 'Carpeta y contenido enviados a la papelera',
             carpetasAfectadas: resultadoCarpetas.modifiedCount,
@@ -173,6 +185,17 @@ router.patch('/:id/restaurar', async (req, res) => {
             }
         });
 
+        await registrarActividadSegura({
+            usuarioId: req.usuario.id,
+            accion: 'CARPETA_RESTAURADA',
+            tipoRecurso: 'carpeta',
+            recursoId: raiz._id,
+            recursoNombre: raiz.nombre,
+            detalles: {
+                carpetasRestauradas: resultadoCarpetas.modifiedCount,
+                archivosRestaurados: resultadoArchivos.modifiedCount
+            }
+        });
         return res.json({
             mensaje: 'Carpeta y contenido restaurados',
             carpetasRestauradas: resultadoCarpetas.modifiedCount,
@@ -224,6 +247,17 @@ router.delete('/:id/permanente', async (req, res) => {
             _id: { $in: ids }, propietarioId, enPapelera: true
         });
 
+        await registrarActividadSegura({
+            usuarioId: req.usuario.id,
+            accion: 'CARPETA_ELIMINADA_PERMANENTE',
+            tipoRecurso: 'carpeta',
+            recursoId: raiz._id,
+            recursoNombre: raiz.nombre,
+            detalles: {
+                carpetasEliminadas: resultado.deletedCount,
+                archivosEliminados: documentos.length
+            }
+        });
         return res.json({
             mensaje: 'Carpeta y contenido eliminados definitivamente',
             carpetasEliminadas: resultado.deletedCount,

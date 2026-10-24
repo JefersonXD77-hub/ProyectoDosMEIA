@@ -4,6 +4,7 @@ const express = require('express');
 const { ObjectId, GridFSBucket } = require('mongodb');
 const { autenticar } = require('../middlewares/auth.middleware');
 const { obtenerBD } = require('../config/mongodb');
+const { registrarActividadSegura } = require('../services/actividad.service');
 
 const router = express.Router();
 router.use(autenticar);
@@ -127,10 +128,18 @@ router.post('/', async (req, res) => {
     };
     // Índice único para evitar invitaciones duplicadas bajo solicitudes simultáneas.
     await db.collection('permisos').createIndex({tipo:1,recursoId:1,destinatarioId:1}, {unique:true, name:'permiso_unico'});
-    await db.collection('permisos').updateOne(llave, {
+    const resultadoPermiso = await db.collection('permisos').updateOne(llave, {
       $set: { nivel, fechaActualizacion: new Date() },
       $setOnInsert: { fechaCreacion: new Date() }
     }, { upsert: true });
+    await registrarActividadSegura({
+      usuarioId: req.usuario.id,
+      accion: resultadoPermiso.upsertedCount ? 'PERMISO_OTORGADO' : 'PERMISO_ACTUALIZADO',
+      tipoRecurso: tipo,
+      recursoId,
+      recursoNombre: tipo === 'archivo' ? r.filename : r.nombre,
+      detalles: { destinatario: u.username, nivel, destinatarioId: String(u._id) }
+    });
     return res.json({ mensaje: 'Permiso guardado correctamente', usuario: u.username, nivel });
   } catch(e) {
     console.error('Compartir:', e);
@@ -157,13 +166,53 @@ router.get('/recibidos', async (req,res) => {
 
 router.patch('/permisos/:id', async (req,res) => {
   if (!esId(req.params.id) || !niveles.includes(req.body?.nivel)) return res.status(400).json({mensaje:'ID o nivel invalido'});
-  const x = await obtenerBD().collection('permisos').updateOne({ _id: oid(req.params.id), propietarioId: oid(req.usuario.id) }, { $set: {nivel:req.body.nivel, fechaActualizacion:new Date()} });
-  return res.status(x.matchedCount ? 200 : 404).json({mensaje:x.matchedCount ? 'Permiso actualizado' : 'Permiso inexistente'});
+  try {
+    const db = obtenerBD();
+    const filtro = { _id: oid(req.params.id), propietarioId: oid(req.usuario.id) };
+    const permiso = await db.collection('permisos').findOne(filtro);
+    if (!permiso) return res.status(404).json({mensaje:'Permiso inexistente'});
+    const x = await db.collection('permisos').updateOne(filtro, { $set: {nivel:req.body.nivel, fechaActualizacion:new Date()} });
+    if (x.matchedCount) {
+      await registrarActividadSegura({
+        usuarioId: req.usuario.id,
+        accion: 'PERMISO_ACTUALIZADO',
+        tipoRecurso: permiso.tipo,
+        recursoId: permiso.recursoId,
+        detalles: {
+          permisoId: String(permiso._id),
+          destinatarioId: String(permiso.destinatarioId),
+          nivelAnterior: permiso.nivel, nivelNuevo: req.body.nivel
+        }
+      });
+    }
+    return res.status(x.matchedCount ? 200 : 404).json({mensaje:x.matchedCount ? 'Permiso actualizado' : 'Permiso inexistente'});
+  } catch (e) {
+    console.error('Modificar permiso:', e);
+    return res.status(500).json({mensaje:'No fue posible modificar el permiso'});
+  }
 });
 router.delete('/permisos/:id', async (req,res) => {
   if (!esId(req.params.id)) return res.status(400).json({mensaje:'ID invalido'});
-  const x = await obtenerBD().collection('permisos').deleteOne({ _id: oid(req.params.id), propietarioId: oid(req.usuario.id) });
-  return res.status(x.deletedCount ? 200 : 404).json({mensaje:x.deletedCount ? 'Permiso revocado' : 'Permiso inexistente'});
+  try {
+    const db = obtenerBD();
+    const filtro = { _id: oid(req.params.id), propietarioId: oid(req.usuario.id) };
+    const permiso = await db.collection('permisos').findOne(filtro);
+    if (!permiso) return res.status(404).json({mensaje:'Permiso inexistente'});
+    const x = await db.collection('permisos').deleteOne(filtro);
+    if (x.deletedCount) {
+      await registrarActividadSegura({
+        usuarioId: req.usuario.id,
+        accion: 'PERMISO_REVOCADO',
+        tipoRecurso: permiso.tipo,
+        recursoId: permiso.recursoId,
+        detalles: { permisoId: String(permiso._id), destinatarioId: String(permiso.destinatarioId), nivelAnterior: permiso.nivel }
+      });
+    }
+    return res.status(x.deletedCount ? 200 : 404).json({mensaje:x.deletedCount ? 'Permiso revocado' : 'Permiso inexistente'});
+  } catch (e) {
+    console.error('Revocar permiso:', e);
+    return res.status(500).json({mensaje:'No fue posible revocar el permiso'});
+  }
 });
 
 // Listar una carpeta compartida y sus hijos. No permite acceder sin permiso.
@@ -192,6 +241,19 @@ router.get('/archivos/:id/descargar', async (req,res) => {
     res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(nombre)}`);
     const stream = new GridFSBucket(db,{bucketName:'documentos'}).openDownloadStream(acceso.r._id);
     stream.on('error', e => { console.error('Descarga compartida:',e); if (!res.headersSent) res.status(500).json({mensaje:'Fallo la descarga'}); else res.destroy(e); });
+    // Registrar después del evento finish; una descarga fallida no cuenta como exitosa.
+    res.once('finish', () => {
+      if (res.statusCode < 400 && res.writableFinished) {
+        void registrarActividadSegura({
+          usuarioId: req.usuario.id,
+          accion: 'ARCHIVO_COMPARTIDO_DESCARGADO',
+          tipoRecurso: 'archivo',
+          recursoId: acceso.r._id,
+          recursoNombre: nombre,
+          detalles: { propietarioId: String(acceso.dueño) }
+        });
+      }
+    });
     stream.pipe(res);
   } catch(e) { console.error(e); if (!res.headersSent) return res.status(500).json({mensaje:'Error de descarga'}); }
 });
@@ -207,8 +269,19 @@ router.patch('/:tipo/:id/renombrar', async (req,res) => {
     const db = obtenerBD();
     const acc = await autorizar(db,tipo,id,req.usuario.id);
     if (!acc || !['PROPIETARIO','EDICION'].includes(acc.nivel)) return res.status(403).json({mensaje:'Requiere permiso de edicion'});
-    if (tipo==='archivo') await db.collection('documentos.files').updateOne({_id:oid(id), 'metadata.enPapelera':false},{$set:{filename:nombre,'metadata.tipo':nombre.toLowerCase().endsWith('.md')?'.md':'.txt','metadata.fechaActualizacion':new Date()}});
-    else await db.collection('carpetas').updateOne({_id:oid(id), enPapelera:false},{$set:{nombre,fechaActualizacion:new Date()}});
+    const anterior = tipo === 'archivo' ? acc.r.filename : acc.r.nombre;
+    let resultado;
+    if (tipo==='archivo') resultado = await db.collection('documentos.files').updateOne({_id:oid(id), 'metadata.enPapelera':false},{$set:{filename:nombre,'metadata.tipo':nombre.toLowerCase().endsWith('.md')?'.md':'.txt','metadata.fechaActualizacion':new Date()}});
+    else resultado = await db.collection('carpetas').updateOne({_id:oid(id), enPapelera:false},{$set:{nombre,fechaActualizacion:new Date()}});
+    if (!resultado.matchedCount) return res.status(404).json({mensaje:'Recurso no disponible'});
+    if (anterior !== nombre) await registrarActividadSegura({
+      usuarioId: req.usuario.id,
+      accion: tipo === 'archivo' ? 'ARCHIVO_RENOMBRADO' : 'CARPETA_RENOMBRADA',
+      tipoRecurso: tipo,
+      recursoId: id,
+      recursoNombre: nombre,
+      detalles: { nombreAnterior: anterior, compartido: String(acc.dueño) !== req.usuario.id }
+    });
     return res.json({mensaje:'Recurso renombrado correctamente'});
   } catch(e) { console.error(e); return res.status(500).json({mensaje:'No se pudo renombrar'}); }
 });
@@ -248,6 +321,13 @@ router.post('/comentarios', async(req,res) => {
   const acc = await autorizar(db,tipo,recursoId,req.usuario.id);
   if (!acc || !['PROPIETARIO','COMENTAR','EDICION'].includes(acc.nivel)) return res.status(403).json({mensaje:'No tienes permiso para comentar'});
   const x = await db.collection('comentarios').insertOne({tipo,recursoId:oid(recursoId),autorId:oid(req.usuario.id),texto:texto.trim(),fechaCreacion:new Date()});
+  await registrarActividadSegura({
+    usuarioId: req.usuario.id,
+    accion: 'COMENTARIO_CREADO',
+    tipoRecurso: tipo,
+    recursoId,
+    detalles: { comentarioId: String(x.insertedId) }
+  });
   return res.status(201).json({mensaje:'Comentario registrado', id:x.insertedId});
 });
 module.exports = router;

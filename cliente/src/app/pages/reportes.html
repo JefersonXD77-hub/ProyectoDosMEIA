@@ -1,0 +1,163 @@
+<header class="barra">
+  <strong>Gestión Documental · Búsquedas y reportes</strong>
+  <button type="button" (click)="volver()">Volver a Mis archivos</button>
+</header>
+<main>
+  <div class="titulo">
+    <div><h1>Búsquedas y reportes</h1><p>Consulta tus documentos y analiza los datos almacenados en MongoDB.</p></div>
+    <div class="pestanas">
+      <button type="button" [class.activa]="vista==='buscar'" (click)="cambiarVista('buscar')">Buscar archivos</button>
+      <button type="button" [class.activa]="vista==='reportes'" (click)="cambiarVista('reportes')">Reportes</button>
+    </div>
+  </div>
+
+  <section class="filtros">
+    <div class="campos">
+      <label>Desde<input type="date" [(ngModel)]="desde" name="desde"></label>
+      <label>Hasta<input type="date" [(ngModel)]="hasta" name="hasta"></label>
+      @if (administrador) {
+        <label>Usuario
+          <select [(ngModel)]="usuarioId" name="usuarioId">
+            <option value="">Todos los usuarios</option>
+            @for (u of usuarios; track u.id) { <option [value]="u.id">{{u.nombre}} (&#64;{{u.username}})</option> }
+          </select>
+        </label>
+      }
+    </div>
+    <div class="acciones">
+      <button type="button" class="primario" (click)="refrescar()">Aplicar filtros</button>
+      <button type="button" (click)="limpiar()">Limpiar</button>
+    </div>
+  </section>
+
+  @if (vista === 'buscar') {
+    <section class="panel">
+      <h2>Localizar documentos y carpetas</h2>
+      <form (ngSubmit)="buscar()" class="buscador">
+        <label>Nombre<input type="search" name="texto" [(ngModel)]="texto" placeholder="Escribe parte del nombre..."></label>
+        <label>Recurso
+          <select name="tipo" [(ngModel)]="tipo" (ngModelChange)="tipoCambiado($event)"><option value="todos">Ambos</option><option value="archivo">Archivos</option><option value="carpeta">Carpetas</option></select>
+        </label>
+        <label>Extensión
+          <select name="extension" [(ngModel)]="extension" [disabled]="tipo === 'carpeta'" [title]="tipo === 'carpeta' ? 'No aplica a carpetas' : 'Filtrar por extensión'"><option value="todas">Todas</option><option value=".txt">.txt</option><option value=".md">.md</option></select>
+        </label>
+        <label>Orden
+          <select name="orden" [(ngModel)]="orden"><option value="recientes">Más recientes</option><option value="antiguos">Más antiguos</option><option value="nombre">Por nombre</option></select>
+        </label>
+        <button type="submit" class="primario" [disabled]="cargandoBusqueda">Buscar</button>
+      </form>
+      @if (errorBusqueda) { <p class="error">{{errorBusqueda}}</p> }
+      @if (errorDescarga) { <p class="error">{{errorDescarga}}</p> }
+      @if (cargandoBusqueda) { <p>Buscando...</p> }
+      @else {
+        <p class="resumen">{{total}} resultados</p>
+        <div class="tabla-scroll">
+          <table><thead><tr><th>Nombre</th><th>Tipo</th><th>Fecha de creación / carga</th><th>Tamaño</th><th>Acción</th></tr></thead>
+          <tbody>
+            @for (item of resultados; track item._id) {
+              <tr><td><span class="ico">{{item.tipo==='archivo'?'📄':'📁'}}</span>{{item.nombre}}</td>
+                <td>{{item.tipo}}</td><td>{{item.fecha | date:'dd/MM/yyyy HH:mm'}}</td>
+                <td>{{item.tamano == null ? '—' : (item.tamano | number)+' bytes'}}</td>
+                <td>@if(item.tipo==='archivo'){<button type="button" (click)="descargar(item)" [disabled]="!item.esPropio" [title]="item.esPropio ? 'Descargar archivo' : 'Disponible solo para el propietario'">Descargar</button>}
+                  @else {<span class="sutil">Localizar en Mis archivos</span>}</td>
+              </tr>
+            } @empty { <tr><td colspan="5" class="sutil">No se encontraron recursos con estos filtros.</td></tr> }
+          </tbody></table>
+        </div>
+        <div class="paginador"><button type="button" (click)="cambiarPagina(-1)" [disabled]="pagina<=1">Anterior</button>
+          <span>Página {{pagina}} de {{paginas || 1}}</span>
+          <button type="button" (click)="cambiarPagina(1)" [disabled]="pagina>=paginas">Siguiente</button></div>
+      }
+      <p class="nota">La búsqueda incluye archivos y carpetas propios; el administrador puede buscar globalmente. Los elementos de la papelera están excluidos.</p>
+    </section>
+  } @else {
+    @if (errorReportes) { <p class="error">{{errorReportes}}</p> }
+    @if (cargandoReportes) { <p>Cargando reportes de MongoDB...</p> }
+    @else {
+      @if (reportes; as r) {
+      <h2 class="titulo-seccion">Indicadores generales</h2>
+      <div class="metricas">
+        <article><span>Archivos activos</span><strong>{{r.resumen.totalArchivos | number}}</strong></article>
+        <article><span>Permisos concedidos</span><strong>{{r.resumen.totalPermisos | number}}</strong></article>
+        <article><span>Operaciones registradas</span><strong>{{r.resumen.totalActividades | number}}</strong></article>
+      </div>
+      <section class="panel-almacenamiento" aria-label="Resumen de almacenamiento">
+        <div class="cabecera-almacenamiento">
+          <div>
+            <h2>Almacenamiento</h2>
+            <p class="sutil">Espacio lógico de archivos almacenados en GridFS, incluida la papelera.</p>
+          </div>
+          <span class="etiqueta-info">Cuota de referencia · 10 MB por usuario activo</span>
+        </div>
+        @if (cargandoAlmacenamiento) {
+          <p class="sutil">Calculando almacenamiento...</p>
+        } @else if (almacenamiento; as a) {
+          <div class="metricas almacenamiento-metricas">
+            <article><span>Asignado</span><strong>{{formatearTamano(a.asignado)}}</strong></article>
+            <article><span>Utilizado</span><strong>{{formatearTamano(a.utilizado)}}</strong></article>
+            <article><span>Disponible</span><strong>{{formatearTamano(a.disponible)}}</strong></article>
+          </div>
+          <div class="uso-cabecera"><span>Uso de espacio</span><strong>{{a.porcentajeUso | number:'1.0-2'}}%</strong></div>
+          <div class="barra-uso" role="progressbar" [attr.aria-valuenow]="progresoAlmacenamiento(a.porcentajeUso)" aria-valuemin="0" aria-valuemax="100" aria-label="Almacenamiento utilizado">
+            <div [style.width.%]="progresoAlmacenamiento(a.porcentajeUso)"></div>
+          </div>
+          @if (a.utilizado > a.asignado) { <p class="error">El uso ha superado la cuota de referencia.</p> }
+          <p class="nota">Esta cuota es informativa; no representa espacio físico de MongoDB ni impone un límite de subida. Los filtros de fecha no cambian el almacenamiento actual.</p>
+        } @else {
+          <p class="error">{{errorAlmacenamiento || 'El almacenamiento no está disponible.'}}</p>
+        }
+      </section>
+      <h2 class="titulo-seccion">Estadísticas y rankings</h2>
+      <div class="dos-columnas">
+        <section class="panel"><h2>Archivos por tipo</h2><table><thead><tr><th>Extensión</th><th>Cantidad</th></tr></thead>
+          <tbody>@for (v of r.archivosPorTipo; track v.tipo){<tr><td>{{v.tipo}}</td><td>{{v.cantidad}}</td></tr>}
+          @empty {<tr><td colspan="2">Sin archivos</td></tr>}</tbody></table></section>
+        <section class="panel"><h2>Acciones principales</h2><table><thead><tr><th>Pos.</th><th>Acción</th><th>Cantidad</th></tr></thead>
+          <tbody>@for(v of r.accionesPrincipales;track v.accion; let i=$index){<tr><td><span class="puesto">{{i+1}}</span></td><td>{{v.accion}}</td><td>{{v.cantidad}}</td></tr>}
+          @empty {<tr><td colspan="3">Sin registros</td></tr>}</tbody></table></section>
+        <section class="panel ranking"><h2>Top 10 · Usuarios con más archivos</h2><table><thead><tr><th>Pos.</th><th>Usuario</th><th>Archivos</th></tr></thead>
+          <tbody>@for(v of r.usuariosMasArchivos;track v.id; let i = $index){<tr><td><span class="puesto" [class.lider]="i===0">{{i+1}}</span></td><td>{{v.nombre}}</td><td class="celda-metrica"><strong>{{v.cantidad ?? 0}}</strong><div class="barra-ranking"><span [style.width.%]="porcentajeBarra(v.cantidad, r.usuariosMasArchivos[0]?.cantidad)"></span></div></td></tr>}
+          @empty {<tr><td colspan="3">Sin datos</td></tr>}</tbody></table></section>
+        <section class="panel ranking"><h2>Usuarios que más comparten</h2><table><thead><tr><th>Pos.</th><th>Usuario</th><th>Recursos</th><th>Destinatarios</th></tr></thead>
+          <tbody>@for(v of r.usuariosMasCompartidos;track v.id; let i = $index){<tr><td><span class="puesto" [class.lider]="i===0">{{i+1}}</span></td><td>{{v.nombre}}</td><td class="celda-metrica"><strong>{{v.recursos ?? 0}}</strong><div class="barra-ranking"><span [style.width.%]="porcentajeBarra(v.recursos,r.usuariosMasCompartidos[0]?.recursos)"></span></div></td><td>{{v.destinatarios ?? 0}}</td></tr>}
+          @empty {<tr><td colspan="4">Sin datos</td></tr>}</tbody></table></section>
+        <section class="panel ranking"><h2>Archivos más compartidos</h2><table><thead><tr><th>Pos.</th><th>Archivo</th><th>Usuarios</th></tr></thead>
+          <tbody>@for(v of r.archivosMasCompartidos;track v.id; let i = $index){<tr><td><span class="puesto" [class.lider]="i===0">{{i+1}}</span></td><td class="nombre-largo">{{v.nombre}}</td><td class="celda-metrica"><strong>{{v.cantidad ?? 0}}</strong><div class="barra-ranking"><span [style.width.%]="porcentajeBarra(v.cantidad,r.archivosMasCompartidos[0]?.cantidad)"></span></div></td></tr>}
+          @empty {<tr><td colspan="3">Sin datos</td></tr>}</tbody></table></section>
+        <section class="panel"><h2>Archivos nunca compartidos</h2><p class="nota">Sin permisos vigentes ni concesiones registradas en el historial.</p><table><thead><tr><th>Archivo</th></tr></thead><tbody>
+          @for (v of r.archivosNuncaCompartidos; track v.id) { <tr><td>{{v.nombre}}</td></tr> }
+          @empty { <tr><td>No se encontraron archivos sin compartir</td></tr> }</tbody></table></section>
+        <section class="panel ranking"><h2>Carpetas con más archivos</h2><p class="nota">Archivos activos ubicados directamente en cada carpeta.</p><table><thead><tr><th>Pos.</th><th>Carpeta</th><th>Archivos</th></tr></thead><tbody>
+          @for (v of r.carpetasMasArchivos; track v.id; let i = $index) { <tr><td><span class="puesto" [class.lider]="i===0">{{i+1}}</span></td><td class="nombre-largo">{{v.nombre}}</td><td class="celda-metrica"><strong>{{v.cantidad ?? 0}}</strong><div class="barra-ranking"><span [style.width.%]="porcentajeBarra(v.cantidad,r.carpetasMasArchivos[0]?.cantidad)"></span></div></td></tr> }
+          @empty { <tr><td colspan="3">Sin archivos en carpetas</td></tr> }</tbody></table></section>
+        <section class="panel ranking"><h2>Archivos con más operaciones</h2><table><thead><tr><th>Pos.</th><th>Archivo</th><th>Operaciones</th></tr></thead>
+          <tbody>@for(v of r.archivosMasOperados;track v.id; let i = $index){<tr><td><span class="puesto" [class.lider]="i===0">{{i+1}}</span></td><td class="nombre-largo">{{v.nombre || v.id}}</td><td class="celda-metrica"><strong>{{v.operaciones ?? 0}}</strong><div class="barra-ranking"><span [style.width.%]="porcentajeBarra(v.operaciones,r.archivosMasOperados[0]?.operaciones)"></span></div></td></tr>}
+          @empty {<tr><td colspan="3">Sin datos</td></tr>}</tbody></table></section>
+        <section class="panel"><h2>Operaciones por tipo de recurso</h2><table><thead><tr><th>Recurso</th><th>Operaciones</th></tr></thead>
+          <tbody>@for(v of r.operacionesPorTipo;track v.tipo){<tr><td>{{v.tipo}}</td><td>{{v.cantidad}}</td></tr>}
+          @empty {<tr><td colspan="2">Sin datos</td></tr>}</tbody></table></section>
+        <section class="panel"><h2>Operaciones por día (UTC)</h2><table><thead><tr><th>Fecha</th><th>Operaciones</th></tr></thead>
+          <tbody>@for(v of r.operacionesPorPeriodo;track v.periodo){<tr><td>{{v.periodo}}</td><td>{{v.cantidad}}</td></tr>}
+          @empty {<tr><td colspan="2">Sin datos</td></tr>}</tbody></table></section>
+      </div>
+      <section class="panel"><h2>Archivos en el rango de fechas</h2><div class="tabla-scroll"><table>
+        <thead><tr><th>Archivo</th><th>Propietario</th><th>Fecha</th><th>Tamaño</th></tr></thead><tbody>
+        @for(v of r.archivosPorFecha;track v.id){<tr><td>{{v.nombre}}</td><td>{{v.usuario}}</td><td>{{v.fecha | date:'dd/MM/yyyy'}}</td><td>{{v.tamano | number}} bytes</td></tr>}
+        @empty {<tr><td colspan="4">No hay archivos para estas fechas</td></tr>}</tbody></table></div></section>
+      <div class="dos-columnas">
+        <section class="panel"><h2>Recursos compartidos por el usuario</h2><table><thead><tr><th>Tipo</th><th>Destinatario</th><th>Permiso</th></tr></thead>
+          <tbody>@for(v of r.compartidosOtorgados;track v.id){<tr><td>{{v.tipo}}</td><td>{{v.destinatario}}</td><td>{{v.nivel}}</td></tr>}
+          @empty {<tr><td colspan="3">Sin recursos compartidos</td></tr>}</tbody></table></section>
+        <section class="panel"><h2>Recursos recibidos por el usuario</h2><table><thead><tr><th>Tipo</th><th>Propietario</th><th>Permiso</th></tr></thead>
+          <tbody>@for(v of r.compartidosRecibidos;track v.id){<tr><td>{{v.tipo}}</td><td>{{v.destinatario}}</td><td>{{v.nivel}}</td></tr>}
+          @empty {<tr><td colspan="3">Sin recursos recibidos</td></tr>}</tbody></table></section>
+      </div>
+      <section class="panel"><h2>Historial del usuario en el rango de fechas</h2><div class="tabla-scroll"><table>
+        <thead><tr><th>Fecha</th><th>Usuario</th><th>Operación</th><th>Recurso</th></tr></thead><tbody>
+        @for(v of r.historialUsuario;track $index){<tr><td>{{v.fecha | date:'dd/MM/yyyy HH:mm'}}</td><td>{{v.usuario}}</td><td>{{v.accion}}</td><td>{{v.recursoNombre || v.tipoRecurso}}</td></tr>}
+        @empty {<tr><td colspan="4">Sin operaciones</td></tr>}</tbody></table></div></section>
+      <p class="nota">{{r.notas.archivos}} {{r.notas.comparticion}} {{r.notas.actividad}} {{r.notas.limites}}</p>
+      }
+    }
+  }
+</main>

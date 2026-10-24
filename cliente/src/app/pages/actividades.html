@@ -1,0 +1,82 @@
+<header>
+      <strong>Gestión Documental · Historial de actividad</strong>
+      <button type="button" (click)="volver()">Volver a Mis archivos</button>
+    </header>
+    <main>
+      <h1>Historial de actividad</h1>
+      <p>Consulta quién realizó cada operación, sobre qué recurso y cuándo.</p>
+      <form (ngSubmit)="buscar()">
+        <label>Desde
+          <input type="date" name="desde" [(ngModel)]="desde" />
+        </label>
+        <label>Hasta
+          <input type="date" name="hasta" [(ngModel)]="hasta" />
+        </label>
+        <label>Operación
+          <select name="accion" [(ngModel)]="accion">
+            <option value="">Todas las operaciones</option>
+            <option value="ARCHIVO_SUBIDO">Archivo subido</option>
+            <option value="ARCHIVO_DESCARGADO">Archivo descargado</option>
+            <option value="ARCHIVO_RENOMBRADO">Archivo renombrado</option>
+            <option value="ARCHIVO_MOVIDO">Archivo movido</option>
+            <option value="ARCHIVO_PAPELERA">Archivo enviado a papelera</option>
+            <option value="ARCHIVO_RESTAURADO">Archivo restaurado</option>
+            <option value="ARCHIVO_ELIMINADO_PERMANENTE">Archivo eliminado definitivamente</option>
+            <option value="ARCHIVO_COMPARTIDO_DESCARGADO">Archivo compartido descargado</option>
+            <option value="CARPETA_CREADA">Carpeta creada</option>
+            <option value="CARPETA_RENOMBRADA">Carpeta renombrada</option>
+            <option value="CARPETA_MOVIDA">Carpeta movida</option>
+            <option value="CARPETA_PAPELERA">Carpeta enviada a papelera</option>
+            <option value="CARPETA_RESTAURADA">Carpeta restaurada</option>
+            <option value="CARPETA_ELIMINADA_PERMANENTE">Carpeta eliminada definitivamente</option>
+            <option value="PERMISO_OTORGADO">Permiso concedido</option>
+            <option value="PERMISO_ACTUALIZADO">Permiso modificado</option>
+            <option value="PERMISO_REVOCADO">Permiso revocado</option>
+            <option value="COMENTARIO_CREADO">Comentario creado</option>
+            <option value="USUARIO_CREADO">Usuario creado</option>
+            <option value="USUARIO_ACTIVADO">Usuario activado</option>
+            <option value="USUARIO_DESACTIVADO">Usuario desactivado</option>
+          </select>
+        </label>
+        <label>Recurso
+          <select name="tipoRecurso" [(ngModel)]="tipoRecurso">
+            <option value="">Todos</option>
+            <option value="archivo">Archivos</option>
+            <option value="carpeta">Carpetas</option>
+            <option value="permiso">Permisos</option>
+            <option value="comentario">Comentarios</option>
+            <option value="usuario">Usuarios</option>
+          </select>
+        </label>
+        <button type="submit" [disabled]="cargando">Buscar</button>
+        <button type="button" (click)="limpiar()">Limpiar</button>
+      </form>
+      @if (error) { <p class="error">{{ error }}</p> }
+      @if (cargando) { <p>Cargando actividades...</p> }
+      @else {
+        <p>{{ total }} operaciones encontradas</p>
+        <section>
+          @for (item of actividades; track item._id) {
+            <article>
+              <div>
+                <strong>{{ item.accion }}</strong>
+                <span class="fecha">{{ item.fecha | date:'dd/MM/yyyy HH:mm:ss' }}</span>
+              </div>
+              <div>Usuario: {{ item.usuario?.nombre || item.usuario?.username || item.usuarioId }}</div>
+              <div>Recurso: {{ item.tipoRecurso }} · {{ item.recursoNombre || item.recursoId || 'Sin nombre' }}</div>
+              @if (detalleVisible(item)) {
+                <small>Detalles: {{ detalleVisible(item) }}</small>
+              }
+            </article>
+          } @empty {
+            <p>No hay operaciones registradas con los filtros seleccionados.</p>
+          }
+        </section>
+        <footer>
+          <button type="button" (click)="cambiarPagina(-1)" [disabled]="pagina <= 1">Anterior</button>
+          <span>Página {{ pagina }} de {{ paginas || 1 }}</span>
+          <button type="button" (click)="cambiarPagina(1)" [disabled]="pagina >= paginas">Siguiente</button>
+        </footer>
+      }
+    </main>
+  

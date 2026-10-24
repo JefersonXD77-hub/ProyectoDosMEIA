@@ -7,6 +7,7 @@ const { pipeline } = require('node:stream/promises');
 const path = require('node:path');
 
 const { obtenerBD } = require('../config/mongodb');
+const { registrarActividadSegura } = require('../services/actividad.service');
 const { autenticar } = require('../middlewares/auth.middleware');
 
 const router = express.Router();
@@ -109,6 +110,15 @@ router.post('/', (req, res, next) => {
             stream
         );
 
+        await registrarActividadSegura({
+            usuarioId: req.usuario.id,
+            accion: 'ARCHIVO_SUBIDO',
+            tipoRecurso: 'archivo',
+            recursoId: stream.id,
+            recursoNombre: nombre,
+            detalles: { tamano: req.file.size, carpetaId: String(carpetaId ?? '') }
+        });
+
         return res.status(201).json({
             mensaje: 'Archivo almacenado correctamente',
             archivo: {
@@ -207,6 +217,14 @@ router.get('/:id/descargar', async (req, res) => {
         );
 
         await pipeline(bucket.openDownloadStream(id), res);
+        // Se ejecuta únicamente cuando terminó la transferencia correctamente.
+        await registrarActividadSegura({
+            usuarioId: req.usuario.id,
+            accion: 'ARCHIVO_DESCARGADO',
+            tipoRecurso: 'archivo',
+            recursoId: archivo._id,
+            recursoNombre: archivo.filename
+        });
 
     } catch (error) {
         console.error('Error al descargar:', error);

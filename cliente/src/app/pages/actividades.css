@@ -1,0 +1,15 @@
+header { display:flex; justify-content:space-between; align-items:center;
+      background:#17365d; color:white; padding:16px 28px; gap:12px; }
+    main { max-width:1200px; margin:auto; padding:28px; }
+    form { display:flex; flex-wrap:wrap; gap:12px; align-items:end;
+      border:1px solid #ddd; border-radius:8px; padding:16px; }
+    label { display:flex; flex-direction:column; gap:5px; font-size:14px; }
+    input, select, button { padding:9px; }
+    button { cursor:pointer; }
+    article { border:1px solid #d8e1ee; background:#f6f8fb;
+      border-radius:7px; padding:14px; margin:10px 0; }
+    article div:first-child { display:flex; gap:15px; flex-wrap:wrap; justify-content:space-between; }
+    .fecha, small { color:#4d5d72; }
+    .error { color:#b91c1c; }
+    footer { display:flex; align-items:center; justify-content:center; gap:16px; margin:20px 0; }
+  

@@ -1,0 +1,23 @@
+header { display:flex; justify-content:space-between; align-items:center; background:#17365d; color:white; padding:18px 30px; }
+    main { padding:30px; } h2 { margin-top:30px; } button, input, select { padding:9px 12px; }
+    button { cursor:pointer; } button:disabled { opacity:.55; cursor:not-allowed; }
+    .panel { background:#f5f8fc; border:1px solid #bdcee0; padding:18px; margin:16px 0; border-radius:8px; }
+    form { display:flex; flex-wrap:wrap; gap:10px; align-items:end; }
+    label { display:flex; flex-direction:column; gap:6px; }
+    .fila { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; border:1px solid #ddd; padding:12px; border-radius:5px; margin:6px 0; }
+    .acciones { display:flex; flex-wrap:wrap; gap:6px; }
+    .error { color:#b91c1c; } .aviso { color:#166534; }
+    .comentario { border-bottom:1px solid #ddd; padding:8px; }
+    .editor-permiso { display:flex; gap:10px; flex-wrap:wrap; align-items:end; padding:12px; border:1px solid #cbd5e1; border-radius:6px; background:#f5f8fc; }
+    .editor-permiso label { display:flex; flex-direction:column; gap:6px; }
+    .comentario small { color:#475569; }
+    .campo-destinatario { position:relative; display:flex; flex-direction:column; gap:6px; min-width:300px; flex:1 1 310px; max-width:420px; }
+    .campo-destinatario input { width:100%; box-sizing:border-box; }
+    .sugerencias { position:absolute; top:100%; left:0; right:0; z-index:5; background:white; border:1px solid #bdcee0; border-radius:6px; box-shadow:0 8px 20px #0002; max-height:220px; overflow:auto; }
+    .sugerencias p { margin:0; padding:10px; color:#475569; font-size:.9rem; }
+    .sugerencia { display:flex; flex-direction:column; align-items:flex-start; width:100%; gap:4px; background:white; border:0; border-bottom:1px solid #edf2f7; text-align:left; }
+    .sugerencia:hover, .sugerencia:focus-visible { background:#eaf2fb; }
+    .sugerencia span { color:#475569; font-size:.85rem; }
+    .usuario-elegido { display:flex; flex-wrap:wrap; align-items:center; gap:6px; color:#166534; font-size:.9rem; }
+    .usuario-elegido button { padding:4px 8px; }
+  

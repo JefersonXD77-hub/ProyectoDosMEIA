@@ -1,0 +1,157 @@
+<header>
+  <strong>Gestión Documental</strong>
+  <button type="button" (click)="verCompartidos()">Compartidos</button>
+  <button type="button" (click)="verActividades()">Actividad</button>
+  <button type="button" (click)="verReportes()">Reportes</button>
+  @if (esAdministrador) {
+    <button type="button" (click)="verUsuarios()">Usuarios</button>
+  }
+  <button type="button" (click)="verPapelera()">Papelera</button>
+  <button type="button" (click)="salir()">Cerrar sesión</button>
+</header>
+
+<main>
+  <h1>Mis carpetas</h1>
+  <nav aria-label="Ruta actual">
+    <button type="button" (click)="irRaiz()">Mi unidad</button>
+    @for (item of ruta; track item._id; let i = $index) {
+      <span> / </span>
+      <button type="button" (click)="irNivel(i)">{{ item.nombre }}</button>
+    }
+  </nav>
+
+  <div class="barra-herramientas">
+    <form class="crear-carpeta" (ngSubmit)="crear()">
+      <input name="nombre" placeholder="Nombre de nueva carpeta" [(ngModel)]="nombreNuevo" required />
+      <button type="submit" [disabled]="guardando">{{ guardando ? 'Creando...' : '+ Nueva carpeta' }}</button>
+    </form>
+    <div class="subida">
+      <input #archivoInput type="file" accept=".txt,.md" (change)="seleccionarArchivo($event)" style="display:none" aria-label="Elegir archivo" />
+      <button type="button" (click)="archivoInput.click()" [disabled]="subiendo">Seleccionar documento</button>
+      <span [title]="archivoSeleccionado?.name || ' '"
+            style="display:inline-block;max-width:180px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;vertical-align:middle">
+        {{ archivoSeleccionado?.name || ' ' }}
+      </span>
+      <button type="button" (click)="subirArchivo(archivoInput)" [disabled]="!archivoSeleccionado || subiendo">
+        {{ subiendo ? 'Subiendo...' : 'Subir archivo' }}
+      </button>
+    </div>
+  </div>
+  <p class="ayuda">Se admiten archivos .txt y .md, hasta 2 MB.</p>
+  @if (error) { <p class="error">{{ error }}</p> }
+  @if (aviso) { <p class="aviso">{{ aviso }}</p> }
+
+  <section class="explorador" aria-label="Archivos y carpetas">
+    <div class="encabezado-lista"><strong>Nombre</strong><span>Acciones</span></div>
+    @if (cargando || cargandoArchivos) {
+      <p class="estado-lista">Cargando contenido...</p>
+    } @else {
+      @for (elemento of elementosCarpeta; track elemento.tipo + ':' + elemento.id) {
+        @if (elemento.tipo === 'carpeta') {
+          <div class="recurso">
+            <button class="nombre-recurso" type="button" (click)="abrir(elemento.carpeta)" [title]="'Abrir ' + elemento.nombre">
+              <span class="icono-recurso" aria-hidden="true">📁</span><span>{{ elemento.nombre }}</span>
+            </button>
+            <div class="acciones-fila">
+              <button type="button" (click)="renombrarCarpeta(elemento.carpeta)" [disabled]="renombrandoCarpetaId !== null">Renombrar</button>
+              <button type="button" (click)="iniciarMovimientoCarpeta(elemento.carpeta)" [disabled]="moviendo">Mover</button>
+              <button type="button" (click)="compartirCarpeta(elemento.carpeta)">Compartir</button>
+              <button class="boton-peligro" type="button" (click)="enviarCarpetaPapelera(elemento.carpeta)" [disabled]="eliminandoCarpetaId !== null">Eliminar</button>
+            </div>
+          </div>
+        } @else {
+          <div class="recurso">
+            <div class="nombre-recurso nombre-archivo">
+              <span class="icono-recurso" aria-hidden="true">📄</span>
+              <span>{{ elemento.nombre }} <small>({{ elemento.archivo.length }} bytes)</small></span>
+            </div>
+            <div class="acciones-fila">
+              <button type="button" (click)="descargarArchivo(elemento.archivo)">Descargar</button>
+              <button type="button" (click)="renombrarArchivo(elemento.archivo)" [disabled]="renombrandoId !== null">Renombrar</button>
+              <button type="button" (click)="iniciarMovimiento(elemento.archivo)">Mover</button>
+              <button type="button" (click)="compartirArchivo(elemento.archivo)">Compartir</button>
+              <button class="boton-peligro" type="button" (click)="enviarArchivoPapelera(elemento.archivo)" [disabled]="eliminandoId !== null">Eliminar</button>
+            </div>
+          </div>
+        }
+      } @empty {
+        <p class="estado-lista">Esta carpeta está vacía. Crea una carpeta o sube tu primer archivo.</p>
+      }
+    }
+  </section>
+
+  @if (archivoParaMover || carpetaParaMover) {
+    <section class="panel-mover">
+      <h2>Mover {{ carpetaParaMover ? 'carpeta' : 'archivo' }}</h2>
+      <p>Recurso seleccionado: <strong>{{ carpetaParaMover?.nombre || archivoParaMover?.filename }}</strong></p>
+      <h3>Seleccionar carpeta de destino</h3>
+      <nav aria-label="Ruta de destino">
+        <button type="button" (click)="irDestinoRaiz()" [disabled]="moviendo">Mi unidad</button>
+        @for (item of rutaDestino; track item._id; let i = $index) {
+          <span> / </span>
+          <button type="button" (click)="irDestinoNivel(i)" [disabled]="moviendo">{{ item.nombre }}</button>
+        }
+      </nav>
+      @if (cargandoDestinos) {
+        <p>Cargando destinos...</p>
+      } @else {
+        <div class="destinos">
+          @for (carpeta of carpetasDestino; track carpeta._id) {
+            <button type="button" class="carpeta" (click)="abrirDestino(carpeta)"
+                    [disabled]="moviendo || !destinoPermitido(carpeta)"
+                    [title]="destinoPermitido(carpeta) ? 'Abrir destino' : 'No se puede elegir la propia carpeta ni sus descendientes'">
+              📁 {{ carpeta.nombre }} →
+            </button>
+          } @empty { <p>No hay más subcarpetas aquí.</p> }
+        </div>
+      }
+      @if (errorMovimiento) { <p class="error">{{ errorMovimiento }}</p> }
+      <div class="acciones">
+        <button type="button" (click)="confirmarMovimiento()" [disabled]="moviendo || cargandoDestinos">
+          {{ moviendo ? 'Moviendo...' : 'Mover a esta ubicación' }}
+        </button>
+        <button type="button" (click)="cancelarMovimiento()" [disabled]="moviendo">Cancelar</button>
+      </div>
+    </section>
+  }
+
+  @if (archivoRenombrar) {
+    <div class="dialogo-fondo">
+      <section class="dialogo" role="dialog" aria-modal="true" aria-labelledby="tituloRenombrar">
+        <h2 id="tituloRenombrar">Renombrar archivo</h2>
+        <p>Modifica el nombre sin tener que escribir la extensión.</p>
+        <form (ngSubmit)="guardarRenombrado()">
+          <label for="nombreRenombrado">Nombre</label>
+          <div class="nombre-con-extension">
+            <input id="nombreRenombrado" name="nombreRenombrado" [(ngModel)]="nombreBaseRenombrar" maxlength="145" [disabled]="renombrandoId !== null" required />
+            <span>{{ extensionRenombrado }}</span>
+          </div>
+          @if (errorRenombrado) { <p class="error">{{ errorRenombrado }}</p> }
+          <div class="botones-dialogo">
+            <button type="button" (click)="cancelarRenombrado()" [disabled]="renombrandoId !== null">Cancelar</button>
+            <button class="principal" type="submit" [disabled]="renombrandoId !== null">{{ renombrandoId ? 'Guardando...' : 'Guardar' }}</button>
+          </div>
+        </form>
+      </section>
+    </div>
+  }
+
+  @if (carpetaRenombrar) {
+    <div class="dialogo-fondo">
+      <section class="dialogo" role="dialog" aria-modal="true" aria-labelledby="tituloRenombrarCarpeta">
+        <h2 id="tituloRenombrarCarpeta">Renombrar carpeta</h2>
+        <form (ngSubmit)="guardarRenombradoCarpeta()">
+          <label for="nombreCarpetaRenombrar">Nombre</label>
+          <div class="nombre-con-extension">
+            <input id="nombreCarpetaRenombrar" name="nombreCarpetaRenombrar" [(ngModel)]="nombreCarpetaRenombrar" maxlength="100" [disabled]="renombrandoCarpetaId !== null" required />
+          </div>
+          @if (errorRenombrarCarpeta) { <p class="error">{{ errorRenombrarCarpeta }}</p> }
+          <div class="botones-dialogo">
+            <button type="button" (click)="cancelarRenombradoCarpeta()" [disabled]="renombrandoCarpetaId !== null">Cancelar</button>
+            <button class="principal" type="submit" [disabled]="renombrandoCarpetaId !== null">{{ renombrandoCarpetaId ? 'Guardando...' : 'Guardar' }}</button>
+          </div>
+        </form>
+      </section>
+    </div>
+  }
+</main>

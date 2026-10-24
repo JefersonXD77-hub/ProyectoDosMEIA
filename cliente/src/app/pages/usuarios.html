@@ -1,0 +1,45 @@
+<header class="barra"><strong>Gestión Documental · Usuarios</strong><button (click)="volver()">Volver a Mis archivos</button></header>
+<main>
+  <h1>Administración de usuarios</h1>
+  <p>Consulta, crea y habilita o deshabilita cuentas de la plataforma.</p>
+  @if (error) { <p class="error" role="alert">{{ error }}</p> }
+  @if (aviso) { <p class="aviso" role="status">{{ aviso }}</p> }
+  <section class="panel">
+    <h2>Crear usuario</h2>
+    <form (ngSubmit)="crear()" class="formulario">
+      <label>Nombre completo <input name="nombre" [(ngModel)]="nombre" required placeholder="Ej. María Pérez" /></label>
+      <label>Nombre de usuario <input name="username" [(ngModel)]="username" required pattern="[a-zA-Z0-9_]{3,30}" placeholder="Ej. maria_perez" /></label>
+      <label>Contraseña <input type="password" name="password" [(ngModel)]="password" minlength="5" autocomplete="new-password" required placeholder="Mínimo 5 caracteres" /></label>
+      <label>Rol <select name="rol" [(ngModel)]="rol"><option value="USUARIO">Usuario</option><option value="ADMINISTRADOR">Administrador</option></select></label>
+      <button class="primario" [disabled]="creando">{{ creando ? 'Creando...' : 'Crear usuario' }}</button>
+    </form>
+  </section>
+  <section class="panel">
+    <div class="titulo-lista"><h2>Usuarios registrados ({{ usuarios.length }})</h2><button (click)="cargar()" [disabled]="cargando">Actualizar</button></div>
+    @if (cargando) { <p>Cargando usuarios...</p> }
+    @else {
+      <div class="tabla-scroll"><table><thead><tr><th>Nombre</th><th>Usuario</th><th>Rol</th><th>Estado</th><th>Acción</th></tr></thead>
+        <tbody>
+          @for (u of usuarios; track u._id) {
+            <tr>
+              <td>{{ u.nombre }}</td><td>{{ u.username }} @if (u._id === miId) { (Tú) }</td>
+              <td>{{ u.rol === 'ADMINISTRADOR' ? 'Administrador' : 'Usuario' }}</td>
+              <td [class.verde]="u.activo" [class.rojo]="!u.activo">{{ u.activo ? 'Activo' : 'Inactivo' }}</td>
+              <td><button type="button" [disabled]="u._id === miId || procesando" (click)="solicitarEstado(u)">{{ u.activo ? 'Desactivar' : 'Activar' }}</button></td>
+            </tr>
+          } @empty { <tr><td colspan="5">No hay usuarios.</td></tr> }
+        </tbody>
+      </table></div>
+    }
+    <p class="ayuda">No puedes desactivar tu propia cuenta. Una cuenta desactivada no puede iniciar sesión.</p>
+  </section>
+</main>
+@if (pendiente) {
+  <div class="sombra">
+    <section class="dialogo" role="dialog" aria-modal="true" aria-labelledby="confirmacion">
+      <h2 id="confirmacion">{{ pendiente.activo ? 'Desactivar usuario' : 'Activar usuario' }}</h2>
+      <p>¿Confirmas que deseas {{ pendiente.activo ? 'desactivar' : 'activar' }} a <strong>{{ pendiente.username }}</strong>?</p>
+      <div class="acciones"><button type="button" (click)="cancelar()" [disabled]="procesando">Cancelar</button><button class="primario" type="button" (click)="confirmar()" [disabled]="procesando">{{ procesando ? 'Guardando...' : 'Confirmar' }}</button></div>
+    </section>
+  </div>
+}

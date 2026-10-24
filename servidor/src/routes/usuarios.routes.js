@@ -1,8 +1,10 @@
 
 const express = require('express');
 const bcrypt = require('bcryptjs');
+const { ObjectId } = require('mongodb');
 
 const { obtenerBD } = require('../config/mongodb');
+const { registrarActividadSegura } = require('../services/actividad.service');
 
 const {
     autenticar,
@@ -90,6 +92,15 @@ router.post('/', autenticar, soloAdministrador, async (req, res) => {
 
         const resultado = await usuarios.insertOne(nuevoUsuario);
 
+        await registrarActividadSegura({
+            usuarioId: req.usuario.id,
+            accion: 'USUARIO_CREADO',
+            tipoRecurso: 'usuario',
+            recursoId: resultado.insertedId,
+            recursoNombre: nuevoUsuario.username,
+            detalles: { rol: nuevoUsuario.rol }
+        });
+
         return res.status(201).json({
             mensaje: 'Usuario creado correctamente',
             usuario: {
@@ -114,6 +125,43 @@ router.post('/', autenticar, soloAdministrador, async (req, res) => {
             mensaje: 'Error al crear usuario'
         });
     }
+});
+
+// MEIA_BLOQUE18: activar o desactivar usuarios, solo administración.
+router.patch('/:id/estado', autenticar, soloAdministrador, async (req, res) => {
+  const { id } = req.params;
+  const { activo } = req.body || {};
+  if (!/^[a-fA-F0-9]{24}$/.test(id) || typeof activo !== 'boolean') {
+    return res.status(400).json({ mensaje: 'Identificador o estado inválido' });
+  }
+  if (!activo && id === req.usuario.id) {
+    return res.status(403).json({ mensaje: 'No puedes desactivar tu cuenta' });
+  }
+  try {
+    const usuarios = obtenerBD().collection('usuarios');
+    const _id = new ObjectId(id);
+    const usuario = await usuarios.findOne({ _id });
+    if (!usuario) return res.status(404).json({ mensaje: 'Usuario no encontrado' });
+    if (!activo && usuario.rol === 'ADMINISTRADOR') {
+      const administradores = await usuarios.countDocuments({ rol: 'ADMINISTRADOR', activo: true });
+      if (administradores <= 1) {
+        return res.status(409).json({ mensaje: 'Debe existir un administrador activo' });
+      }
+    }
+    if (usuario.activo !== activo) {
+      await usuarios.updateOne({ _id }, { $set: { activo, fechaActualizacion: new Date() } });
+      await registrarActividadSegura({
+        usuarioId: req.usuario.id, accion: activo ? 'USUARIO_ACTIVADO' : 'USUARIO_DESACTIVADO',
+        tipoRecurso: 'usuario', recursoId: _id, recursoNombre: usuario.username,
+        detalles: { activoAnterior: usuario.activo, activoNuevo: activo }
+      });
+    }
+    return res.json({ mensaje: activo ? 'Usuario activado correctamente' : 'Usuario desactivado correctamente',
+      usuario: { id, username: usuario.username, activo } });
+  } catch (error) {
+    console.error('Estado de usuario:', error.message);
+    return res.status(500).json({ mensaje: 'Error al modificar el usuario' });
+  }
 });
 
 module.exports = router;

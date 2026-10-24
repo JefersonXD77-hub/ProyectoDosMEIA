@@ -12,6 +12,7 @@ const archivosPapeleraRoutes = require('./routes/archivos.papelera.routes');
 const carpetasPapeleraRoutes = require('./routes/carpetas.papelera.routes');
 const compartidosRoutes = require('./routes/compartidos.routes');
 const actividadesRoutes = require('./routes/actividades.routes');
+const reportesRoutes = require('./routes/reportes.routes');
 const { prepararIndicesActividades } = require('./services/actividad.service');
 
 const {
@@ -32,6 +33,7 @@ app.use(cors({
 }));
 
 app.use(express.json());
+app.use('/api/almacenamiento', require('./routes/almacenamiento.routes'));
 app.use('/api/auth', authRoutes);
 app.use('/api/usuarios', usuariosRoutes);
 app.use('/api/carpetas', carpetasRoutes);
@@ -41,6 +43,7 @@ app.use('/api/archivos', archivosPapeleraRoutes);
 app.use('/api/carpetas', carpetasPapeleraRoutes);
 app.use('/api/compartidos', compartidosRoutes);
 app.use('/api/actividades', actividadesRoutes);
+app.use('/api/reportes', reportesRoutes);
 
 app.get('/api/health', async (req, res) => {
     try {

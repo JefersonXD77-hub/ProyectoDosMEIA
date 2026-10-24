@@ -1,6 +1,7 @@
 import { inject, Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { CanActivateFn, Router } from '@angular/router';
+import { catchError, map, of } from 'rxjs';
 
 export interface Carpeta {
   _id: string;
@@ -41,6 +42,15 @@ interface RespuestaCarpetas {
 interface RespuestaArchivos {
   total: number;
   archivos: Archivo[];
+}
+
+export interface UsuarioAdmin {
+  _id: string;
+  nombre: string;
+  username: string;
+  rol: 'USUARIO' | 'ADMINISTRADOR';
+  activo: boolean;
+  fechaCreacion?: string;
 }
 
 export interface UsuarioCompartible {
@@ -98,6 +108,20 @@ export class ApiService {
     sessionStorage.removeItem('jwt');
   }
 
+  // MEIA_BLOQUE18: Administración de usuarios.
+  perfilActual() {
+    return this.http.get<{ usuario: RespuestaLogin['usuario'] }>(`${this.url}/auth/me`, { headers: this.headers });
+  }
+  listarUsuariosAdmin() {
+    return this.http.get<{ total: number; usuarios: UsuarioAdmin[] }>(`${this.url}/usuarios`, { headers: this.headers });
+  }
+  crearUsuarioAdmin(datos: { nombre: string; username: string; password: string; rol: 'USUARIO' | 'ADMINISTRADOR' }) {
+    return this.http.post<{ mensaje: string }>(`${this.url}/usuarios`, datos, { headers: this.headers });
+  }
+  cambiarEstadoUsuarioAdmin(id: string, activo: boolean) {
+    return this.http.patch<{ mensaje: string }>(`${this.url}/usuarios/${id}/estado`, { activo }, { headers: this.headers });
+  }
+
   // Carpetas
   listarCarpetas(padreId: string | null) {
     return this.http.get<RespuestaCarpetas>(
@@ -115,6 +139,11 @@ export class ApiService {
       { nombre, padreId },
       { headers: this.headers }
     );
+  }
+
+  // Renombrar o mover una carpeta. El backend valida propiedad y jerarquía.
+  actualizarCarpeta(id: string, cambios: { nombre?: string; padreId?: string | null }) {
+    return this.http.patch(`${this.url}/carpetas/${id}`, cambios, { headers: this.headers });
   }
 
   // Archivos: consultar
@@ -290,4 +319,14 @@ export const sesionGuard: CanActivateFn = () => {
   return api.token
     ? true
     : router.createUrlTree(['/login']);
+};
+
+// Consulta el backend para comprobar el rol, no usa datos manipulables del navegador.
+export const administradorGuard: CanActivateFn = () => {
+  const api = inject(ApiService);
+  const router = inject(Router);
+  return api.perfilActual().pipe(
+    map(r => r.usuario.rol === 'ADMINISTRADOR' ? true : router.createUrlTree(['/carpetas'])),
+    catchError(() => of(router.createUrlTree(['/login'])))
+  );
 };

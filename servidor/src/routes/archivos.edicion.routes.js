@@ -3,6 +3,7 @@ const express = require('express');
 const { ObjectId } = require('mongodb');
 
 const { obtenerBD } = require('../config/mongodb');
+const { registrarActividadSegura } = require('../services/actividad.service');
 const { autenticar } = require('../middlewares/auth.middleware');
 
 const router = express.Router();
@@ -158,6 +159,31 @@ router.patch('/:id', async (req, res) => {
         const actualizado = await coleccion.findOne(
             filtro
         );
+
+        if (cambiarNombre && archivo.filename !== actualizado.filename) {
+            await registrarActividadSegura({
+                usuarioId: req.usuario.id,
+                accion: 'ARCHIVO_RENOMBRADO',
+                tipoRecurso: 'archivo',
+                recursoId: actualizado._id,
+                recursoNombre: actualizado.filename,
+                detalles: { nombreAnterior: archivo.filename }
+            });
+        }
+        if (cambiarCarpeta && String(archivo.metadata?.carpetaId ?? '') !==
+            String(actualizado.metadata?.carpetaId ?? '')) {
+            await registrarActividadSegura({
+                usuarioId: req.usuario.id,
+                accion: 'ARCHIVO_MOVIDO',
+                tipoRecurso: 'archivo',
+                recursoId: actualizado._id,
+                recursoNombre: actualizado.filename,
+                detalles: {
+                    carpetaAnterior: String(archivo.metadata?.carpetaId ?? ''),
+                    carpetaDestino: String(actualizado.metadata?.carpetaId ?? '')
+                }
+            });
+        }
 
         return res.json({
             mensaje: 'Archivo actualizado correctamente',
