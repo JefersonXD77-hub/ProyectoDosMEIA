@@ -7,6 +7,12 @@ const authRoutes = require('./routes/auth.routes');
 const usuariosRoutes = require('./routes/usuarios.routes');
 const carpetasRoutes = require('./routes/carpetas.routes');
 const archivosRoutes = require('./routes/archivos.routes');
+const archivosEdicionRoutes = require('./routes/archivos.edicion.routes');
+const archivosPapeleraRoutes = require('./routes/archivos.papelera.routes');
+const carpetasPapeleraRoutes = require('./routes/carpetas.papelera.routes');
+const compartidosRoutes = require('./routes/compartidos.routes');
+const actividadesRoutes = require('./routes/actividades.routes');
+const { prepararIndicesActividades } = require('./services/actividad.service');
 
 const {
     conectarMongoDB,
@@ -30,6 +36,11 @@ app.use('/api/auth', authRoutes);
 app.use('/api/usuarios', usuariosRoutes);
 app.use('/api/carpetas', carpetasRoutes);
 app.use('/api/archivos', archivosRoutes);
+app.use('/api/archivos', archivosEdicionRoutes);
+app.use('/api/archivos', archivosPapeleraRoutes);
+app.use('/api/carpetas', carpetasPapeleraRoutes);
+app.use('/api/compartidos', compartidosRoutes);
+app.use('/api/actividades', actividadesRoutes);
 
 app.get('/api/health', async (req, res) => {
     try {
@@ -56,6 +67,7 @@ async function iniciarServidor() {
         }
         await conectarMongoDB();
         await prepararIndices();
+        await prepararIndicesActividades();
         app.listen(PORT, '127.0.0.1', () => {
             console.log(
                 `Servidor ejecutándose en http://localhost:${PORT}`

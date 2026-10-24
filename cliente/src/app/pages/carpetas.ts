@@ -9,11 +9,7 @@ import {
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 
-import {
-  ApiService,
-  Carpeta,
-  Archivo
-} from '../services/api';
+import { ApiService, Carpeta, Archivo } from '../services/api';
 
 @Component({
   selector: 'app-carpetas',
@@ -23,13 +19,15 @@ import {
   template: `
     <header>
       <strong>Gestión Documental</strong>
+      <button type="button" (click)="verCompartidos()"> Compartidos </button>
+      <button type="button" (click)="verPapelera()"> Papelera </button>
       <button (click)="salir()">Cerrar sesión</button>
     </header>
 
     <main>
       <h1>Mis carpetas</h1>
 
-      <!-- Navegación entre carpetas -->
+      <!-- Ruta actual -->
       <nav>
         <button (click)="irRaiz()">Mi unidad</button>
 
@@ -41,7 +39,7 @@ import {
         }
       </nav>
 
-      <!-- Crear carpetas -->
+      <!-- Crear carpeta -->
       <form (ngSubmit)="crear()">
         <input
           name="nombre"
@@ -59,20 +57,33 @@ import {
         <p class="error">{{ error }}</p>
       }
 
-      <!-- Listado de carpetas -->
+      @if (aviso) {
+        <p class="aviso">{{ aviso }}</p>
+      }
+
+      <!-- Carpetas -->
       <h2>Carpetas</h2>
 
       @if (cargando) {
         <p>Cargando carpetas...</p>
       } @else {
-        <section class="listado">
+        <section>
           @for (carpeta of carpetas; track carpeta._id) {
-            <button
-              class="carpeta"
-              (click)="abrir(carpeta)"
-            >
-              📁 {{ carpeta.nombre }}
-            </button>
+            <div class="fila-carpeta">
+              <button type="button" class="carpeta" (click)="abrir(carpeta)">
+                📁 {{ carpeta.nombre }}
+              </button>
+              <button type="button" (click)="compartirCarpeta(carpeta)">Compartir</button>
+              <button
+                type="button"
+                class="boton-peligro"
+                (click)="enviarCarpetaPapelera(carpeta)"
+                [disabled]="eliminandoCarpetaId !== null"
+                title="Enviar esta carpeta y su contenido a la papelera"
+              >
+                {{ eliminandoCarpetaId === carpeta._id ? 'Eliminando...' : 'Eliminar' }}
+              </button>
+            </div>
           } @empty {
             <p>No hay carpetas en esta ubicación.</p>
           }
@@ -81,7 +92,7 @@ import {
 
       <hr />
 
-      <!-- Gestión de archivos -->
+      <!-- Archivos -->
       <h2>Mis archivos</h2>
 
       <div class="subida">
@@ -102,15 +113,13 @@ import {
       </div>
 
       <p class="ayuda">
-        Formatos permitidos: .txt y .md.
-        Tamaño máximo: 2 MB.
+        Formatos: .txt y .md. Tamaño máximo: 2 MB.
       </p>
 
-      <!-- Listado de archivos -->
       @if (cargandoArchivos) {
         <p>Cargando archivos...</p>
       } @else {
-        <section class="listado">
+        <section>
           @for (archivo of archivos; track archivo._id) {
             <div class="archivo">
               <span>
@@ -118,16 +127,128 @@ import {
                 ({{ archivo.length }} bytes)
               </span>
 
-              <button
-                type="button"
-                (click)="descargarArchivo(archivo)"
-              >
-                Descargar
-              </button>
+              <div class="acciones">
+                <button
+                  type="button"
+                  (click)="descargarArchivo(archivo)"
+                >
+                  Descargar
+                </button>
+
+                <button
+                  type="button"
+                  (click)="renombrarArchivo(archivo)"
+                  [disabled]="renombrandoId === archivo._id"
+                >
+                  Renombrar
+                </button>
+
+                <button
+                  type="button"
+                  (click)="iniciarMovimiento(archivo)"
+                >
+                  Mover
+                </button>
+                <button type="button" (click)="compartirArchivo(archivo)">Compartir</button>
+                <button
+                  type="button"
+                  (click)="enviarArchivoPapelera(archivo)"
+                  [disabled]="eliminandoId !== null"
+                >
+                  Eliminar
+                </button>
+              </div>
             </div>
           } @empty {
             <p>No hay archivos en esta ubicación.</p>
           }
+        </section>
+      }
+
+      <!-- Selector de destino -->
+      @if (archivoParaMover) {
+        <section class="panel-mover">
+          <h2>Mover archivo</h2>
+
+          <p>
+            Archivo seleccionado:
+            <strong>{{ archivoParaMover.filename }}</strong>
+          </p>
+
+          <h3>Seleccionar carpeta de destino</h3>
+
+          <nav>
+            <button
+              type="button"
+              (click)="irDestinoRaiz()"
+              [disabled]="moviendo"
+            >
+              Mi unidad
+            </button>
+
+            @for (
+              item of rutaDestino;
+              track item._id;
+              let i = $index
+            ) {
+              <span> / </span>
+              <button
+                type="button"
+                (click)="irDestinoNivel(i)"
+                [disabled]="moviendo"
+              >
+                {{ item.nombre }}
+              </button>
+            }
+          </nav>
+
+          @if (cargandoDestinos) {
+            <p>Cargando destinos...</p>
+          } @else {
+            <div class="destinos">
+              @for (
+                carpeta of carpetasDestino;
+                track carpeta._id
+              ) {
+                <button
+                  type="button"
+                  class="carpeta"
+                  (click)="abrirDestino(carpeta)"
+                  [disabled]="moviendo"
+                >
+                  📁 {{ carpeta.nombre }} →
+                </button>
+              } @empty {
+                <p>No hay más subcarpetas aquí.</p>
+              }
+            </div>
+          }
+
+          @if (errorMovimiento) {
+            <p class="error">{{ errorMovimiento }}</p>
+          }
+
+          <div class="acciones">
+            <button
+              type="button"
+              (click)="confirmarMovimiento()"
+              [disabled]="moviendo || cargandoDestinos"
+            >
+              {{
+                moviendo
+                  ? 'Moviendo...'
+                  : 'Mover a esta ubicación'
+              }}
+            </button>
+
+            <button
+              type="button"
+              (click)="cancelarMovimiento()"
+              [disabled]="moviendo"
+            >
+              Cancelar
+            </button>
+          </div>
         </section>
       }
     </main>
@@ -136,8 +257,8 @@ import {
   styles: [`
     header {
       display: flex;
-      justify-content: space-between;
       align-items: center;
+      justify-content: space-between;
       padding: 18px 30px;
       background: #17365d;
       color: white;
@@ -151,13 +272,12 @@ import {
       margin: 18px 0;
     }
 
-    form,
-    .subida {
+    form, .subida, .acciones {
       display: flex;
       flex-wrap: wrap;
       align-items: center;
       gap: 10px;
-      margin: 20px 0;
+      margin: 14px 0;
     }
 
     input {
@@ -165,24 +285,29 @@ import {
     }
 
     button {
-      padding: 10px 15px;
+      padding: 9px 13px;
       cursor: pointer;
     }
 
     button:disabled {
+      opacity: 0.55;
       cursor: not-allowed;
-      opacity: 0.6;
     }
 
-    .listado {
-      margin: 12px 0 24px;
+    .fila-carpeta {
+      display: flex;
+      align-items: center;
+      gap: 8px;
     }
+    .fila-carpeta .carpeta { flex: 1; width: auto; }
+    .boton-peligro { border: 1px solid #b91c1c; color: #991b1b; }
 
     .carpeta {
       display: block;
       width: 100%;
-      text-align: left;
       margin: 6px 0;
+      padding: 12px;
+      text-align: left;
       background: #f2f5f9;
       border: 1px solid #ddd;
       border-radius: 6px;
@@ -192,6 +317,7 @@ import {
       display: flex;
       justify-content: space-between;
       align-items: center;
+      flex-wrap: wrap;
       gap: 12px;
       padding: 8px 12px;
       margin: 6px 0;
@@ -204,8 +330,24 @@ import {
       overflow-wrap: anywhere;
     }
 
+    .panel-mover {
+      margin-top: 25px;
+      padding: 20px;
+      border: 1px solid #b6c7da;
+      border-radius: 8px;
+      background: #f6f9fc;
+    }
+
+    .destinos {
+      margin: 15px 0;
+    }
+
     .error {
       color: #b91c1c;
+    }
+
+    .aviso {
+      color: #166534;
     }
 
     .ayuda {
@@ -227,37 +369,59 @@ export class Carpetas implements OnInit {
   private router = inject(Router);
   private cdr = inject(ChangeDetectorRef);
 
-  // Datos de carpetas
+  // Carpetas
   carpetas: Carpeta[] = [];
   ruta: Carpeta[] = [];
-
   nombreNuevo = '';
+
   cargando = false;
   guardando = false;
 
-  // Datos de archivos
+  // Archivos
   archivos: Archivo[] = [];
   archivoSeleccionado: File | null = null;
 
   cargandoArchivos = false;
   subiendo = false;
 
-  // Errores generales
-  error = '';
+  // Edicion de archivos
+  renombrandoId: string | null = null;
 
-  // Identificador de la carpeta actual
+  // Papelera
+  eliminandoId: string | null = null;
+
+  // Movimiento de archivos
+  archivoParaMover: Archivo | null = null;
+  rutaDestino: Carpeta[] = [];
+  carpetasDestino: Carpeta[] = [];
+
+  cargandoDestinos = false;
+  moviendo = false;
+  errorMovimiento = '';
+
+  eliminandoCarpetaId: string | null = null;
+
+  // Mensajes
+  error = '';
+  aviso = '';
+
   get padreActual(): string | null {
     return this.ruta.length
       ? this.ruta[this.ruta.length - 1]._id
       : null;
   }
 
-  // Se ejecuta al iniciar el componente
+  get destinoActual(): string | null {
+    return this.rutaDestino.length
+      ? this.rutaDestino[this.rutaDestino.length - 1]._id
+      : null;
+  }
+
   ngOnInit() {
     this.cargar();
   }
 
-  // Cargar carpetas y archivos de la ubicación actual
+  // Consultar carpetas y archivos
   cargar() {
     this.cargando = true;
     this.error = '';
@@ -272,15 +436,13 @@ export class Carpetas implements OnInit {
 
         this.carpetas = respuesta.carpetas;
         this.cargando = false;
-
         this.cdr.markForCheck();
       },
 
       error: (error) => {
         if (this.padreActual !== carpetaId) return;
 
-        console.error('Error al consultar carpetas:', error);
-
+        console.error(error);
         this.cargando = false;
 
         if (error.status === 401) {
@@ -288,32 +450,32 @@ export class Carpetas implements OnInit {
           return;
         }
 
-        this.error = 'No fue posible consultar las carpetas';
-
+        this.error = 'No se pudieron consultar las carpetas';
         this.cdr.markForCheck();
       }
     });
   }
 
-  // Abrir una subcarpeta
+  // Navegacion
   abrir(carpeta: Carpeta) {
     this.ruta.push(carpeta);
+    this.aviso = '';
     this.cargar();
   }
 
-  // Regresar a la raíz
   irRaiz() {
     this.ruta = [];
+    this.aviso = '';
     this.cargar();
   }
 
-  // Regresar a un nivel anterior
   irNivel(indice: number) {
     this.ruta = this.ruta.slice(0, indice + 1);
+    this.aviso = '';
     this.cargar();
   }
 
-  // Crear una carpeta
+  // Crear carpeta
   crear() {
     const nombre = this.nombreNuevo.trim();
 
@@ -322,27 +484,31 @@ export class Carpetas implements OnInit {
     this.guardando = true;
     this.error = '';
 
-    this.api.crearCarpeta(nombre, this.padreActual).subscribe({
-      next: () => {
-        this.nombreNuevo = '';
-        this.guardando = false;
+    this.api.crearCarpeta(nombre, this.padreActual)
+      .subscribe({
+        next: () => {
+          this.nombreNuevo = '';
+          this.guardando = false;
+          this.aviso = 'Carpeta creada correctamente';
+          this.cargar();
+          this.cdr.markForCheck();
+        },
 
-        this.cargar();
-        this.cdr.markForCheck();
-      },
+        error: (error) => {
+          this.guardando = false;
 
-      error: (error) => {
-        console.error('Error al crear carpeta:', error);
+          if (error.status === 401) {
+            this.salir();
+            return;
+          }
 
-        this.guardando = false;
-        this.error = 'No fue posible crear la carpeta';
-
-        this.cdr.markForCheck();
-      }
-    });
+          this.error = 'No se pudo crear la carpeta';
+          this.cdr.markForCheck();
+        }
+      });
   }
 
-  // Seleccionar un archivo desde Windows
+  // Seleccionar archivo
   seleccionarArchivo(evento: Event) {
     const input = evento.target as HTMLInputElement;
 
@@ -350,7 +516,7 @@ export class Carpetas implements OnInit {
     this.error = '';
   }
 
-  // Consultar los archivos almacenados en GridFS
+  // Consultar archivos de la carpeta actual
   cargarArchivos() {
     this.cargandoArchivos = true;
 
@@ -362,15 +528,13 @@ export class Carpetas implements OnInit {
 
         this.archivos = respuesta.archivos;
         this.cargandoArchivos = false;
-
         this.cdr.markForCheck();
       },
 
       error: (error) => {
         if (this.padreActual !== carpetaId) return;
 
-        console.error('Error al listar archivos:', error);
-
+        console.error(error);
         this.cargandoArchivos = false;
 
         if (error.status === 401) {
@@ -379,27 +543,24 @@ export class Carpetas implements OnInit {
         }
 
         this.error = 'No se pudieron consultar los archivos';
-
         this.cdr.markForCheck();
       }
     });
   }
 
-  // Subir archivo a MongoDB mediante Express
+  // Subir a GridFS
   subirArchivo(input: HTMLInputElement) {
     const archivo = this.archivoSeleccionado;
 
     if (!archivo || this.subiendo) return;
 
-    // Validar formato
     if (!/\.(txt|md)$/i.test(archivo.name)) {
-      this.error = 'Solo se permiten archivos .txt y .md';
+      this.error = 'Solo se permiten .txt y .md';
       return;
     }
 
-    // Validar tamaño
     if (archivo.size > 2 * 1024 * 1024) {
-      this.error = 'El tamaño máximo permitido es de 2 MB';
+      this.error = 'El archivo supera los 2 MB';
       return;
     }
 
@@ -408,74 +569,334 @@ export class Carpetas implements OnInit {
 
     const carpetaId = this.padreActual;
 
-    this.api.subirArchivo(archivo, carpetaId).subscribe({
-      next: () => {
-        this.archivoSeleccionado = null;
-        input.value = '';
-        this.subiendo = false;
+    this.api.subirArchivo(archivo, carpetaId)
+      .subscribe({
+        next: () => {
+          this.subiendo = false;
+          this.archivoSeleccionado = null;
+          input.value = '';
 
-        if (this.padreActual === carpetaId) {
-          this.cargarArchivos();
+          this.aviso = 'Archivo subido correctamente';
+
+          if (this.padreActual === carpetaId) {
+            this.cargarArchivos();
+          }
+
+          this.cdr.markForCheck();
+        },
+
+        error: (error) => {
+          this.subiendo = false;
+
+          if (error.status === 401) {
+            this.salir();
+            return;
+          }
+
+          this.error = 'No se pudo subir el archivo';
+          this.cdr.markForCheck();
         }
-
-        this.cdr.markForCheck();
-      },
-
-      error: (error) => {
-        console.error('Error al subir archivo:', error);
-
-        this.subiendo = false;
-
-        if (error.status === 401) {
-          this.salir();
-          return;
-        }
-
-        this.error = 'No fue posible subir el archivo';
-
-        this.cdr.markForCheck();
-      }
-    });
+      });
   }
 
-  // Descargar un archivo desde GridFS
+  // Descargar desde GridFS
   descargarArchivo(archivo: Archivo) {
+    this.api.descargarArchivo(archivo._id)
+      .subscribe({
+        next: (contenido) => {
+          const url = URL.createObjectURL(contenido);
+          const enlace = document.createElement('a');
+
+          enlace.href = url;
+          enlace.download = archivo.filename;
+
+          document.body.appendChild(enlace);
+          enlace.click();
+          enlace.remove();
+
+          setTimeout(() => URL.revokeObjectURL(url), 1000);
+        },
+
+        error: (error) => {
+          if (error.status === 401) {
+            this.salir();
+            return;
+          }
+
+          this.error = 'No se pudo descargar el archivo';
+          this.cdr.markForCheck();
+        }
+      });
+  }
+
+  // RENOMBRAR
+  renombrarArchivo(archivo: Archivo) {
+    if (this.renombrandoId) return;
+
+    const respuesta = window.prompt(
+      'Nuevo nombre del archivo (.txt o .md):',
+      archivo.filename
+    );
+
+    if (respuesta === null) return;
+
+    const nombre = respuesta.trim();
+
+    if (nombre === archivo.filename) return;
+
+    const formato =
+      /^[^\\/:*?"<>|\u0000-\u001F]{1,150}\.(txt|md)$/i;
+
+    if (!formato.test(nombre)) {
+      this.error = 'Nombre invalido. Usa .txt o .md';
+      return;
+    }
+
+    this.renombrandoId = archivo._id;
     this.error = '';
 
-    this.api.descargarArchivo(archivo._id).subscribe({
-      next: (contenido) => {
-        const url = URL.createObjectURL(contenido);
-
-        const enlace = document.createElement('a');
-        enlace.href = url;
-        enlace.download = archivo.filename;
-
-        document.body.appendChild(enlace);
-        enlace.click();
-        enlace.remove();
-
-        // Liberar los recursos temporales
-        setTimeout(() => {
-          URL.revokeObjectURL(url);
-        }, 1000);
+    this.api.actualizarArchivo(
+      archivo._id,
+      { nombre }
+    ).subscribe({
+      next: () => {
+        this.renombrandoId = null;
+        this.aviso = 'Archivo renombrado correctamente';
+        this.cargarArchivos();
+        this.cdr.markForCheck();
       },
 
       error: (error) => {
-        console.error('Error al descargar archivo:', error);
+        this.renombrandoId = null;
 
         if (error.status === 401) {
           this.salir();
           return;
         }
 
-        this.error = 'No fue posible descargar el archivo';
+        this.error = 'No se pudo renombrar el archivo';
+        this.cdr.markForCheck();
+      }
+    });
+  }
+
+  // MOVER: seleccionar archivo
+  iniciarMovimiento(archivo: Archivo) {
+    if (this.moviendo) return;
+
+    this.archivoParaMover = archivo;
+    this.rutaDestino = [];
+    this.errorMovimiento = '';
+
+    this.cargarDestinos();
+  }
+
+  // Consultar las carpetas disponibles
+  cargarDestinos() {
+    this.cargandoDestinos = true;
+    this.errorMovimiento = '';
+
+    const carpetaId = this.destinoActual;
+
+    this.api.listarCarpetas(carpetaId).subscribe({
+      next: (respuesta) => {
+        if (this.destinoActual !== carpetaId) return;
+
+        this.carpetasDestino = respuesta.carpetas;
+        this.cargandoDestinos = false;
+        this.cdr.markForCheck();
+      },
+
+      error: (error) => {
+        if (this.destinoActual !== carpetaId) return;
+
+        this.cargandoDestinos = false;
+
+        if (error.status === 401) {
+          this.salir();
+          return;
+        }
+
+        this.errorMovimiento =
+          'No se pudieron cargar las carpetas';
 
         this.cdr.markForCheck();
       }
     });
   }
 
-  // Cerrar sesión
+  // Entrar a una carpeta de destino
+  abrirDestino(carpeta: Carpeta) {
+    this.rutaDestino.push(carpeta);
+    this.cargarDestinos();
+  }
+
+  // Seleccionar la raiz
+  irDestinoRaiz() {
+    this.rutaDestino = [];
+    this.cargarDestinos();
+  }
+
+  // Regresar a un nivel del destino
+  irDestinoNivel(indice: number) {
+    this.rutaDestino =
+      this.rutaDestino.slice(0, indice + 1);
+
+    this.cargarDestinos();
+  }
+
+  // Confirmar movimiento
+  confirmarMovimiento() {
+    const archivo = this.archivoParaMover;
+
+    if (!archivo || this.moviendo || this.cargandoDestinos) {
+      return;
+    }
+
+    const destino = this.destinoActual;
+    const origen = archivo.metadata?.carpetaId ?? null;
+
+    if (origen === destino) {
+      this.errorMovimiento =
+        'El archivo ya está en esta ubicación';
+      return;
+    }
+
+    this.moviendo = true;
+    this.errorMovimiento = '';
+
+    this.api.actualizarArchivo(
+      archivo._id,
+      { carpetaId: destino }
+    ).subscribe({
+      next: () => {
+        this.moviendo = false;
+        this.archivoParaMover = null;
+        this.rutaDestino = [];
+        this.carpetasDestino = [];
+
+        this.aviso = 'Archivo movido correctamente';
+        this.cargarArchivos();
+        this.cdr.markForCheck();
+      },
+
+      error: (error) => {
+        this.moviendo = false;
+
+        if (error.status === 401) {
+          this.salir();
+          return;
+        }
+
+        this.errorMovimiento =
+          'No se pudo mover el archivo';
+
+        this.cdr.markForCheck();
+      }
+    });
+  }
+
+  // Cancelar el movimiento
+  cancelarMovimiento() {
+    if (this.moviendo) return;
+
+    this.archivoParaMover = null;
+    this.rutaDestino = [];
+    this.carpetasDestino = [];
+    this.errorMovimiento = '';
+  }
+
+  // Navegar a la papelera
+  verPapelera() {
+    void this.router.navigateByUrl('/papelera');
+  }
+
+  // Envia una carpeta y todo su contenido a la papelera.
+  enviarCarpetaPapelera(carpeta: Carpeta) {
+    if (this.eliminandoCarpetaId !== null) return;
+
+    const confirmado = window.confirm(
+      `¿Enviar la carpeta "${carpeta.nombre}", sus subcarpetas y archivos a la papelera?`
+    );
+    if (!confirmado) return;
+
+    this.eliminandoCarpetaId = carpeta._id;
+    this.error = '';
+    this.aviso = '';
+
+    this.api.enviarCarpetaPapelera(carpeta._id).subscribe({
+      next: () => {
+        this.eliminandoCarpetaId = null;
+        this.aviso = 'Carpeta y contenido enviados a la papelera';
+        this.cargar();
+        this.cdr.markForCheck();
+      },
+      error: (error) => {
+        this.eliminandoCarpetaId = null;
+        if (error.status === 401) {
+          this.salir();
+          return;
+        }
+        console.error('Error al enviar carpeta a papelera:', error);
+        this.error = 'No se pudo enviar la carpeta a la papelera';
+        this.cdr.markForCheck();
+      }
+    });
+  }
+
+  // Eliminacion logica de un archivo
+  enviarArchivoPapelera(archivo: Archivo) {
+    if (this.eliminandoId !== null) return;
+
+    const confirmado = window.confirm(
+      `¿Enviar "${archivo.filename}" a la papelera?`
+    );
+
+    if (!confirmado) return;
+
+    this.eliminandoId = archivo._id;
+    this.error = '';
+    this.aviso = '';
+
+    this.api.enviarPapelera(archivo._id).subscribe({
+      next: () => {
+        this.eliminandoId = null;
+        this.aviso = 'Archivo enviado a la papelera';
+        this.cargarArchivos();
+        this.cdr.markForCheck();
+      },
+      error: (error) => {
+        this.eliminandoId = null;
+
+        if (error.status === 401) {
+          this.salir();
+          return;
+        }
+
+        console.error('Error enviando a la papelera:', error);
+        this.error = 'No se pudo enviar el archivo a la papelera';
+        this.cdr.markForCheck();
+      }
+    });
+  }
+
+  verCompartidos() {
+    void this.router.navigateByUrl('/compartidos');
+  }
+
+  compartirCarpeta(carpeta: Carpeta) {
+    void this.router.navigate(['/compartidos'], {
+      queryParams: { tipo: 'carpeta', id: carpeta._id, nombre: carpeta.nombre }
+    });
+  }
+
+  compartirArchivo(archivo: Archivo) {
+    void this.router.navigate(['/compartidos'], {
+      queryParams: { tipo: 'archivo', id: archivo._id, nombre: archivo.filename }
+    });
+  }
+
+  // Cerrar sesion
   salir() {
     this.api.cerrarSesion();
     void this.router.navigateByUrl('/login');
